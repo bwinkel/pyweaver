@@ -3,6 +3,7 @@
 
 from collections import namedtuple
 import numpy as np
+from astropy.utils.misc import NumpyRNGContext
 
 
 __all__ = ['create_mock_data', ]
@@ -20,7 +21,8 @@ def create_mock_data(
         map_rms=1,
         offset_rms=1,
         poly_order=2,
-        # baseline_coeffs=((0, ), (0, ))
+        # baseline_coeffs=((0, ), (0, )),
+        rng_seed=0,
         ):
     '''
     TODO
@@ -51,19 +53,20 @@ def create_mock_data(
 
     # generating WCS header
     map_header = {
-        'NAXIS': 2,
+        'NAXIS': 3,
         'NAXIS1': naxis1,
         'NAXIS2': naxis2,
+        'NAXIS3': 1,
         'CDELT1': -pixel_size,
         'CRPIX1': (naxis1 + 1) / 2,
         'CRVAL1': 0.,
         'CTYPE1': 'RA---CAR',
-        'CUNIT1': 'DEG',
+        'CUNIT1': 'deg',
         'CDELT2': pixel_size,
         'CRPIX2': (naxis2 + 1) / 2,
         'CRVAL2': 0.,
         'CTYPE2': 'DEC--CAR',
-        'CUNIT2': 'DEG',
+        'CUNIT2': 'deg',
         }
 
     # lon and lat coordinates for each of the scan lines
@@ -95,17 +98,12 @@ def create_mock_data(
         lons2.append(np.full_like(tmp, _lon))
         lats2.append(tmp)
 
-    # prepare scan-line offset coefficients
-    coeffs1 = np.random.normal(0, offset_rms, (num_scans1, poly_order))
-    coeffs2 = np.random.normal(0, offset_rms, (num_scans2, poly_order))
-
     # generating artificial raw data
-
 
     # TODO: allow to add a (different) baseline to both data sets
     # (which would mimic different ground contributions etc.)
 
-    def generate_data(lons, lats, coeffs):
+    def generate_data(lons, lats, num_scans):
 
         def gauss2d(l, b, A, l0, b0, s):
             return (
@@ -129,54 +127,88 @@ def create_mock_data(
                 ])
         mockdata = []
 
-        for _lons, _lats, _coeffs in zip(lons, lats, coeffs):
+        with NumpyRNGContext(rng_seed):
 
-            _len = len(_lons)
-            # (1) noise
-            _noise = np.random.normal(0, map_rms, _len)
-            noise.append(_noise)
+            # prepare scan-line offset coefficients
+            coeffs = np.random.normal(0, offset_rms, (num_scans, poly_order))
 
-            # (2) polynomial offsets (per scan line); also store tvecs
-            #     (the tvecs define the polynomial basis)
-            _tvec = np.linspace(-1, 1, _len)
-            # TODO: allow other types of polynomials?
-            _tvecs = [np.power(_tvec, p) for p in range(len(_coeffs))]
-            tvecs.append(_tvecs)
-            _offsets = np.polyval(_coeffs, _tvec)
-            offsets.append(_offsets)
+            for _lons, _lats, _coeffs in zip(lons, lats, coeffs):
 
+                _len = len(_lons)
+                # (1) noise
+                _noise = np.random.normal(0, map_rms, _len)
 
-            # (3) generating source signal (a combination of some gaussians,
-            #     and a 2D polynomial)
+                # (2) polynomial offsets (per scan line); also store tvecs
+                #     (the tvecs define the polynomial basis)
+                _tvec = np.linspace(-1, 1, _len)
+                # TODO: allow other types of polynomials?
+                _tvecs = np.array([
+                    np.power(_tvec, p)
+                    for p in range(len(_coeffs))
+                    ])
+                _offsets = np.polyval(_coeffs, _tvec)
 
-            _model = np.sum(
-                (gauss2d(_lons, _lats, *_c) for _c in gauss_coeffs),
-                axis=1,
-                )
-            _model += (
-                1 +
-                0.1 _lons + 0.05 * (_lons - 1) ** 2 +
-                0.2 _lats + 0.02 * (_lats + 0.5) ** 2
-                )
-            model.append(_model)
+                # (3) generating source signal (a combination of some
+                #     gaussians, and a 2D polynomial)
 
-            # (4) put everything together for clean and dirty "maps"
+                _model = np.sum(
+                    (gauss2d(_lons, _lats, *_c) for _c in gauss_coeffs),
+                    axis=1,
+                    )
+                _model += (
+                    1 +
+                    0.1 * _lons + 0.05 * (_lons - 1) ** 2 +
+                    0.2 * _lats + 0.02 * (_lats + 0.5) ** 2
+                    )
 
-            clean.append(_model + _noise)
-            dirty.append(_model + _offsets + _noise)
+                # (4) put everything together for clean and dirty "maps"
 
-            mockdata.append(MockData(
-                tvecs=_tvecs,
-                offsets=_offsets,
-                model=_model,
-                clean=_model + _noise,
-                noise=_noise,
-                dirty=_model + _offsets + _noise
-                ))
+                mockdata.append(MockData(
+                    lons=_lons,
+                    lats=_lats,
+                    coeffs=_coeffs,
+                    tvecs=_tvecs,
+                    offsets=_offsets,
+                    model=_model,
+                    noise=_noise,
+                    clean=_model + _noise,
+                    dirty=_model + _offsets + _noise
+                    ))
 
-        return mockdata
+            return mockdata
 
-    mockdata1 = generate_data(lons1, lats1, coeffs1)
-    mockdata2 = generate_data(lons2, lats2, coeffs2)
+    mockdata1 = generate_data(lons1, lats1, num_scans1)
+    mockdata2 = generate_data(lons2, lats2, num_scans2)
 
     return map_header, mockdata1, mockdata2
+
+
+if __name__ == '__main__':
+
+    import matplotlib.pyplot as plt
+
+    map_header, mockdata1, mockdata2 = create_mock_data(
+        map_size=(5, 5),
+        # map_size=(3, 3),
+        beam_fwhm=10 / 60,
+        grid_kernel_fwhm=None,
+        pixel_size=None,
+        num_scans1=None,
+        num_scans2=None,
+        samples_per_scan1=None,
+        samples_per_scan2=None,
+        map_rms=1,
+        offset_rms=1,
+        poly_order=2,
+        # baseline_coeffs=((0, ), (0, )),
+        rng_seed=0,
+        )
+
+    print(map_header)
+
+    plt.scatter(
+        np.hstack((m1.lons for m1 in mockdata1)),
+        np.hstack((m1.lats for m1 in mockdata1)),
+        c=np.hstack((m1.dirty for m1 in mockdata1)),
+        )
+    plt.show()
