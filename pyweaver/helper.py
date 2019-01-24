@@ -20,7 +20,7 @@ def create_mock_data(
         samples_per_scan2=None,
         map_rms=1,
         offset_rms=1,
-        poly_order=2,
+        poly_order=1,
         # baseline_coeffs=((0, ), (0, )),
         rng_seed=0,
         ):
@@ -127,58 +127,57 @@ def create_mock_data(
                 ])
         mockdata = []
 
-        with NumpyRNGContext(rng_seed):
 
-            # prepare scan-line offset coefficients
-            coeffs = np.random.normal(0, offset_rms, (num_scans, poly_order))
+        # prepare scan-line offset coefficients
+        coeffs = np.random.normal(0, offset_rms, (num_scans, poly_order))
 
-            for _lons, _lats, _coeffs in zip(lons, lats, coeffs):
+        for _lons, _lats, _coeffs in zip(lons, lats, coeffs):
 
-                _len = len(_lons)
-                # (1) noise
-                _noise = np.random.normal(0, map_rms, _len)
+            _len = len(_lons)
+            # (1) noise
+            _noise = np.random.normal(0, map_rms, _len)
 
-                # (2) polynomial offsets (per scan line); also store tvecs
-                #     (the tvecs define the polynomial basis)
-                _tvec = np.linspace(-1, 1, _len)
-                # TODO: allow other types of polynomials?
-                _tvecs = np.array([
-                    np.power(_tvec, p)
-                    for p in range(len(_coeffs))
-                    ])
-                _offsets = np.polyval(_coeffs, _tvec)
+            # (2) polynomial offsets (per scan line); also store tvecs
+            #     (the tvecs define the polynomial basis)
+            _tvec = np.linspace(-1, 1, _len)
+            # TODO: allow other types of polynomials?
+            _tvecs = np.array([
+                np.power(_tvec, p)
+                for p in range(len(_coeffs))
+                ])
+            _offsets = np.polyval(_coeffs, _tvec)
 
-                # (3) generating source signal (a combination of some
-                #     gaussians, and a 2D polynomial)
+            # (3) generating source signal (a combination of some
+            #     gaussians, and a 2D polynomial)
 
-                _model = np.sum(
-                    (gauss2d(_lons, _lats, *_c) for _c in gauss_coeffs),
-                    axis=1,
-                    )
-                _model += (
-                    1 +
-                    0.1 * _lons + 0.05 * (_lons - 1) ** 2 +
-                    0.2 * _lats + 0.02 * (_lats + 0.5) ** 2
-                    )
+            _model = np.sum([
+                gauss2d(_lons, _lats, *_c) for _c in gauss_coeffs
+                ], axis=0)
+            _model += (
+                1 +
+                0.1 * _lons + 0.05 * (_lons - 1) ** 2 +
+                0.2 * _lats + 0.02 * (_lats + 0.5) ** 2
+                )
 
-                # (4) put everything together for clean and dirty "maps"
+            # (4) put everything together for clean and dirty "maps"
 
-                mockdata.append(MockData(
-                    lons=_lons,
-                    lats=_lats,
-                    coeffs=_coeffs,
-                    tvecs=_tvecs,
-                    offsets=_offsets,
-                    model=_model,
-                    noise=_noise,
-                    clean=_model + _noise,
-                    dirty=_model + _offsets + _noise
-                    ))
+            mockdata.append(MockData(
+                lons=_lons,
+                lats=_lats,
+                coeffs=_coeffs,
+                tvecs=_tvecs,
+                offsets=_offsets,
+                model=_model,
+                noise=_noise,
+                clean=_model + _noise,
+                dirty=_model + _offsets + _noise
+                ))
 
-            return mockdata
+        return mockdata
 
-    mockdata1 = generate_data(lons1, lats1, num_scans1)
-    mockdata2 = generate_data(lons2, lats2, num_scans2)
+    with NumpyRNGContext(rng_seed):
+        mockdata1 = generate_data(lons1, lats1, num_scans1)
+        mockdata2 = generate_data(lons2, lats2, num_scans2)
 
     return map_header, mockdata1, mockdata2
 
