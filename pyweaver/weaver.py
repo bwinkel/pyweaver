@@ -141,10 +141,10 @@ if __name__ == '__main__':
         'gauss1d', (kernel_sigma, ), 3 * kernel_sigma, kernel_sigma / 2
         )
 
-    map_header, mockdata1, mockdata2 = create_mock_data(
-        map_size=(5, 5),
+    map_header, m1, m2 = create_mock_data(
+        map_size=(5, 5.5),
         beam_fwhm=beam_fwhm,
-        map_rms=0.01,
+        map_rms=1.,
         poly_order=poly_order,
         )
 

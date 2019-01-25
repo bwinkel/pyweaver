@@ -10,7 +10,7 @@ __all__ = ['create_mock_data', ]
 
 
 def create_mock_data(
-        map_size=(5, 5),
+        map_size=(5, 5.5),  # use slightly rectangular map
         beam_fwhm=10 / 60,
         grid_kernel_fwhm=None,
         pixel_size=None,
@@ -39,17 +39,20 @@ def create_mock_data(
     naxis1 = int(lon_size / pixel_size + 0.5)
     naxis2 = int(lat_size / pixel_size + 0.5)
 
+    # use slight oversampling, to avoid a situation where num_scans == naxis
+    # if they are different, array dimensions and order matter, which is a
+    # good sanity test
     if num_scans1 is None:
-        num_scans1 = naxis1
+        num_scans1 = int(1.1 * naxis1)
 
     if num_scans2 is None:
-        num_scans2 = naxis2
+        num_scans2 = int(1.1 * naxis2)
 
     if samples_per_scan1 is None:
-        samples_per_scan1 = naxis1
+        samples_per_scan1 = int(1.5 * naxis1)
 
     if samples_per_scan2 is None:
-        samples_per_scan2 = naxis2
+        samples_per_scan2 = int(1.5 * naxis2)
 
     # generating WCS header
     map_header = {
@@ -185,7 +188,7 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
 
     map_header, mockdata1, mockdata2 = create_mock_data(
-        map_size=(5, 5),
+        map_size=(5, 5.5),
         # map_size=(3, 3),
         beam_fwhm=10 / 60,
         grid_kernel_fwhm=None,
