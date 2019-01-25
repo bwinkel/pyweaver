@@ -118,14 +118,14 @@ def create_mock_data(
             (2.5, -1, -1, 5 * beam_fwhm),
             ]
 
-        MockData = namedtuple(
-            'MockData', [
-                'lons', 'lats', 'coeffs',
-                'tvecs', 'offsets', 'model', 'noise',
-                # 'baseline',
-                'clean', 'dirty'
-                ])
-        mockdata = []
+        mock_members = [
+            'lons', 'lats', 'coeffs',
+            'tvecs', 'offsets', 'model', 'noise',
+            # 'baseline',
+            'clean', 'dirty'
+            ]
+        MockData = namedtuple('MockData', mock_members)
+        mockdata = MockData(*(list() for m in mock_members))
 
 
         # prepare scan-line offset coefficients
@@ -161,17 +161,15 @@ def create_mock_data(
 
             # (4) put everything together for clean and dirty "maps"
 
-            mockdata.append(MockData(
-                lons=_lons,
-                lats=_lats,
-                coeffs=_coeffs,
-                tvecs=_tvecs,
-                offsets=_offsets,
-                model=_model,
-                noise=_noise,
-                clean=_model + _noise,
-                dirty=_model + _offsets + _noise
-                ))
+            mockdata.lons.append(_lons)
+            mockdata.lats.append(_lats)
+            mockdata.coeffs.append(_coeffs)
+            mockdata.tvecs.append(_tvecs)
+            mockdata.offsets.append(_offsets)
+            mockdata.model.append(_model)
+            mockdata.noise.append(_noise)
+            mockdata.clean.append(_model + _noise)
+            mockdata.dirty.append(_model + _offsets + _noise)
 
         return mockdata
 
@@ -206,8 +204,8 @@ if __name__ == '__main__':
     print(map_header)
 
     plt.scatter(
-        np.hstack((m1.lons for m1 in mockdata1)),
-        np.hstack((m1.lats for m1 in mockdata1)),
-        c=np.hstack((m1.dirty for m1 in mockdata1)),
+        np.hstack(mockdata1.lons),
+        np.hstack(mockdata1.lats),
+        c=np.hstack(mockdata1.dirty),
         )
     plt.show()

@@ -132,7 +132,7 @@ def compute_bw_matrices_and_vectors(
 if __name__ == '__main__':
 
     import matplotlib.pyplot as plt
-    # from helper import create_mock_data
+    from helper import create_mock_data
 
     poly_order = 1
     beam_fwhm = 10 / 60
@@ -148,31 +148,14 @@ if __name__ == '__main__':
         poly_order=poly_order,
         )
 
-    lons1 = [m.lons for m in mockdata1]
-    lats1 = [m.lats for m in mockdata1]
-    tvecs1 = [m.tvecs for m in mockdata1]
-    offsets1 = [m.offsets for m in mockdata1]
-    model1 = [m.model for m in mockdata1]
-    clean1 = [m.clean for m in mockdata1]
-    data1 = [m.dirty for m in mockdata1]
-
-    lons2 = [m.lons for m in mockdata2]
-    lats2 = [m.lats for m in mockdata2]
-    tvecs2 = [m.tvecs for m in mockdata2]
-    offsets2 = [m.offsets for m in mockdata2]
-    model2 = [m.model for m in mockdata2]
-    clean2 = [m.clean for m in mockdata2]
-    data2 = [m.dirty for m in mockdata2]
-
     pvec_input = np.hstack([
-        np.array([m.coeffs for m in mockdata1]).flat,
-        np.array([m.coeffs for m in mockdata2]).flat,
-        # [m2.coeffs for m2 in mockdata2].flat,
+        np.array(m1.coeffs).flat,
+        np.array(m2.coeffs).flat,
         ])
 
     zi1d, wi1d, bw_maps1, zi2d, wi2d, bw_maps2 = compute_bw_arrays(
-        lons1, lats1, tvecs1, data1,
-        lons2, lats2, tvecs2, data2,
+        m1.lons, m1.lats, m1.tvecs, m1.dirty,
+        m2.lons, m2.lats, m2.tvecs, m2.dirty,
         map_header,
         kernel_params,
         poly_order=poly_order,
@@ -184,12 +167,12 @@ if __name__ == '__main__':
     gridder = WcsGrid(tmp_header)
     gridder.set_kernel(*kernel_params)
     gridder.grid(
-        np.hstack(lons1 + lons2),
-        np.hstack(lats1 + lats2),
+        np.hstack(m1.lons + m2.lons),
+        np.hstack(m1.lats + m2.lats),
         np.vstack([
-            np.hstack(offsets1 + offsets2),
-            np.hstack(model1 + model2),
-            np.hstack(clean1 + clean2),
+            np.hstack(m1.offsets + m2.offsets),
+            np.hstack(m1.model + m2.model),
+            np.hstack(m1.clean + m2.clean),
             ]).T
         )
     offset_map, model_map, clean_map = gridder.get_datacube()
@@ -204,23 +187,21 @@ if __name__ == '__main__':
     # plt.imshow(zi1d, origin='lower', interpolation='nearest')
     # plt.show()
 
-    presult1 = np.linalg.lstsq(A, dirty_vec, rcond=None)  # future behaviour
-    presult2 = np.linalg.lstsq(A, dirty_vec, rcond=-1)  # old behaviour
+    presult = np.linalg.lstsq(A, dirty_vec, rcond=None)  # future behaviour
+    # presult = np.linalg.lstsq(A, dirty_vec, rcond=-1)  # old behaviour
 
-    pvec_final1 = presult1[0]
-    pvec_final2 = presult2[0]
-
-    # plt.plot(pvec_input, pvec_final1, 'bx')
-    # plt.plot(pvec_input, pvec_final2, 'rx')
+    pvec_final = presult[0]
+    pvec_final = pvec_input
+    # plt.plot(pvec_input, pvec_final, 'bx')
     # plt.show()
 
-    plt.plot(pvec_input, 'bx')
-    plt.plot(pvec_final1, 'rx')
-    plt.show()
+    # plt.plot(pvec_input, 'bx')
+    # plt.plot(pvec_final, 'rx')
+    # plt.show()
 
     num_rows = zi1d.size
     correction_map = (
-        np.dot(np.abs(rA[:num_rows]), pvec_final1) /
+        np.dot(np.abs(rA[:num_rows]), pvec_final) /
         poly_order /
         np.sum(np.abs(rA[:num_rows, ::poly_order]), axis=1)
         ).reshape(zi1d.shape)
@@ -241,7 +222,7 @@ if __name__ == '__main__':
             ])
         ]
     axes[-1, -1].plot(pvec_input, 'bx')
-    axes[-1, -1].plot(pvec_final1, 'rx')
+    axes[-1, -1].plot(pvec_final, 'rx')
     for im, ax, title in zip(
             ims, axes.flat, [
                 'model_map', 'clean_map', 'dirty_map', 'offset_map',
