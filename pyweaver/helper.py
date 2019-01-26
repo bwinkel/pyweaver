@@ -77,14 +77,18 @@ def create_mock_data(
     # in the real world each scan line could have a different number
     # of samples; want to test that this works!
 
+    # make measured scan lines somewhat larger than the map to avoid edge
+    # effects
+
+    scan_lon_size, scan_lat_size = lon_size + beam_fwhm, lat_size + beam_fwhm
     # assume 1st coverage has scans in longitudinal direction
     lons1, lats1 = [], []
     for i, _lat in enumerate(
-            np.linspace(-lat_size / 2, lat_size / 2, num_scans1)
+            np.linspace(-scan_lat_size / 2, scan_lat_size / 2, num_scans1)
             ):
         # increase sample num by 1, if odd scan line
         tmp = np.linspace(
-            -lon_size / 2, lon_size / 2, samples_per_scan1 + i % 2
+            -scan_lon_size / 2, scan_lon_size / 2, samples_per_scan1 + i % 2
             )
         lons1.append(tmp)
         lats1.append(np.full_like(tmp, _lat))
@@ -92,11 +96,11 @@ def create_mock_data(
     # assume 2nd coverage has scans in latitudinal direction
     lons2, lats2 = [], []
     for i, _lon in enumerate(
-            np.linspace(-lon_size / 2, lon_size / 2, num_scans2)
+            np.linspace(-scan_lon_size / 2, scan_lon_size / 2, num_scans2)
             ):
         # increase sample num by 1, if odd scan line
         tmp = np.linspace(
-            -lat_size / 2, lat_size / 2, samples_per_scan2 + i % 2
+            -scan_lat_size / 2, scan_lat_size / 2, samples_per_scan2 + i % 2
             )
         lons2.append(np.full_like(tmp, _lon))
         lats2.append(tmp)
@@ -148,7 +152,7 @@ def create_mock_data(
                 np.power(_tvec, p)
                 for p in range(len(_coeffs))
                 ])
-            _offsets = np.polyval(_coeffs, _tvec)
+            _offsets = np.polyval(_coeffs[::-1], _tvec)
 
             # (3) generating source signal (a combination of some
             #     gaussians, and a 2D polynomial)
