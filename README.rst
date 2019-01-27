@@ -1,5 +1,8 @@
-This package is not working yet!
+This package is in early alpha!
 ------------------------------------------------
+Installation works, but there is no documentation whatsoever and the
+API is unstable.
+
 
 A package to apply the basket-weaving technique.
 ------------------------------------------------
