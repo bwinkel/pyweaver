@@ -5,7 +5,7 @@ import numpy as np
 from cygrid import WcsGrid
 
 
-__all__ = ['compute_bw_arrays', 'compute_bw_matrices_and_vectors']
+__all__ = ['compute_maps', 'compute_bw_matrices', 'solve_bw']
 
 
 def _create_polybasis(list_of_arrays, porder):
@@ -21,7 +21,7 @@ def _create_polybasis(list_of_arrays, porder):
     return polybasis
 
 
-def compute_bw_arrays(
+def compute_maps(
         lons1, lats1, data1,
         lons2, lats2, data2,
         map_header,
@@ -68,13 +68,13 @@ def compute_bw_arrays(
     for lons, lats, data in zip(lons2, lats2, data2):
         gridders[1].grid(lons, lats, data[:, np.newaxis])
 
-    zi1d = gridders[0].get_datacube().squeeze()
-    zi2d = gridders[1].get_datacube().squeeze()
-    wi1d = gridders[0].get_weights().squeeze()
-    wi2d = gridders[1].get_weights().squeeze()
+    map1 = gridders[0].get_datacube().squeeze()
+    map2 = gridders[1].get_datacube().squeeze()
+    wmap1 = gridders[0].get_weights().squeeze()
+    wmap2 = gridders[1].get_weights().squeeze()
 
-    bw_maps1 = np.empty((porder1 * num_scans1, ) + zi1d.shape)
-    bw_maps2 = np.empty((porder2 * num_scans2, ) + zi1d.shape)
+    bw_maps1 = np.empty((porder1 * num_scans1, ) + map1.shape)
+    bw_maps2 = np.empty((porder2 * num_scans2, ) + map1.shape)
 
     for idx, (lons, lats, pbs) in enumerate(zip(lons1, lats1, polybasis1)):
         for p in range(porder1):
@@ -95,15 +95,15 @@ def compute_bw_arrays(
             bw_maps2[idx * porder2 + p] = bw_map
 
     # need to divide the bw channel maps by the overall weighting
-    bw_maps1 /= wi1d[np.newaxis]
-    bw_maps2 /= wi2d[np.newaxis]
+    bw_maps1 /= wmap1[np.newaxis]
+    bw_maps2 /= wmap2[np.newaxis]
 
-    return zi1d, wi1d, bw_maps1, zi2d, wi2d, bw_maps2
+    return map1, wmap1, bw_maps1, map2, wmap2, bw_maps2
 
 
-def compute_bw_matrices_and_vectors(
-        zi1d, wi1d, bw_maps1,
-        zi2d, wi2d, bw_maps2,
+def compute_bw_matrices(
+        bw_maps1, wmap1,
+        bw_maps2, wmap2,
         poly_order=(1, 1),
         dampening=0.1,
         ):
@@ -112,41 +112,72 @@ def compute_bw_matrices_and_vectors(
     '''
 
     porder1, porder2 = poly_order
-    zid = zi1d - zi2d
     num_params1 = bw_maps1.shape[0]
     num_params2 = bw_maps2.shape[0]
-    num_params = num_params1 + num_params2
+    # num_params = num_params1 + num_params2
 
-    # result vector (containing the flattened difference map)
-    dirty_vec = np.hstack([
-        zid.flat,
-        np.zeros((num_params, ), dtype=np.float64)
-        ])
-
-    _bw1 = bw_maps1.reshape((num_params1, -1)).T
-    _bw2 = bw_maps2.reshape((num_params2, -1)).T
+    bw1 = bw_maps1.reshape((num_params1, -1)).T
+    bw2 = bw_maps2.reshape((num_params2, -1)).T
 
     # BW solving matrix
-    bw_mat = np.hstack([_bw1, -_bw2])
+    bw_mat = np.hstack([bw1, -bw2])
 
     # BW reconstruction matrix; essentially one needs to correct the
     # weighting: since we use both coverages for reconstruction, we
     # also have to apply the joint weight map:
-    _wmap1_flat = wi1d.flatten()
-    _wmap2_flat = wi2d.flatten()
-    _wmap_flat = _wmap1_flat + _wmap2_flat
+    wmap1_flat = wmap1.flatten()
+    wmap2_flat = wmap2.flatten()
+    wmap_flat = wmap1_flat + wmap2_flat
+    # Note, in principle it would have been possible to calculate the wmaps
+    # from the bw_maps by summing over 2nd axis (zero coeff only). However,
+    # this could be unsafe, if for some reason the polynomial basis would
+    # be different, i.e. if the first basis vec was not entirely filled with 1
+    # (perhaps in a future version, this is user-definable)
 
-    bw_mat_r = np.hstack([
-        _bw1 * (_wmap1_flat / _wmap_flat)[:, np.newaxis],
-        _bw2 * (_wmap2_flat / _wmap_flat)[:, np.newaxis],
+    bw_mat_recon = np.hstack([
+        bw1 * (wmap1_flat / wmap_flat)[:, np.newaxis],
+        bw2 * (wmap2_flat / wmap_flat)[:, np.newaxis],
         ])
 
-    # need to add the regularization submatrix to this
+    return bw_mat, bw_mat_recon
+
+
+def solve_bw(
+        bw_mat, bw_mat_recon, diffmap,
+        dampening=0.1, do_fit_map=True
+        ):
+    '''
+    Note: this is separate from the compute_bw_matrices function, because
+    the bw_mat is static for a certain problem and one may want to run
+    the solve_bw on different diffmaps, without necessarily re-compute bw_mat
+    '''
+
+    map_shape = diffmap.shape
+    num_params = bw_mat.shape[1]
+
+    # result vector (containing the flattened difference map)
+    dirty_vec = np.hstack([
+        diffmap.flat,
+        np.zeros((num_params, ), dtype=np.float64)
+        ])
+
+    # need to add the regularization submatrix to bw_mat
     reg_mat = np.eye(num_params, dtype=np.float64) * dampening
     A = np.vstack([bw_mat, reg_mat])
-    rA = np.vstack([bw_mat_r, reg_mat])
 
-    return dirty_vec, A, rA
+    # note, on new numpy versions, lstsq was changed:
+    # presult = np.linalg.lstsq(A, dirty_vec, rcond=None)  # future behaviour
+    # presult = np.linalg.lstsq(A, dirty_vec, rcond=-1)  # old behaviour
+    presult = np.linalg.lstsq(A, dirty_vec)
+    pvec_final = presult[0]
+
+    corr_map = np.dot(bw_mat_recon, pvec_final).reshape(map_shape)
+
+    if do_fit_map:
+        fit_map = np.dot(bw_mat, pvec_final).reshape(map_shape)
+        return pvec_final, corr_map, fit_map
+    else:
+        return pvec_final, corr_map
 
 
 if __name__ == '__main__':
@@ -173,7 +204,7 @@ if __name__ == '__main__':
         np.array(m2.coeffs).flat,
         ])
 
-    zi1d, wi1d, bw_maps1, zi2d, wi2d, bw_maps2 = compute_bw_arrays(
+    map1, wmap1, bw_maps1, map2, wmap2, bw_maps2 = compute_maps(
         m1.lons, m1.lats, m1.dirty,
         m2.lons, m2.lats, m2.dirty,
         map_header,
@@ -197,11 +228,9 @@ if __name__ == '__main__':
         )
     offset_map, model_map, clean_map = gridder.get_datacube()
 
-    dirty_vec, A, rA = compute_bw_matrices_and_vectors(
-        zi1d, wi1d, bw_maps1,
-        zi2d, wi2d, bw_maps2,
-        poly_order=poly_order,
-        dampening=0.1,
+    bw_mat, bw_mat_recon = compute_bw_matrices(
+        bw_maps1, wmap1, bw_maps2, wmap2,
+        poly_order=poly_order, dampening=0.1,
         )
 
     # plt.imshow(
@@ -210,23 +239,13 @@ if __name__ == '__main__':
     #     )
     # plt.show()
 
-    presult = np.linalg.lstsq(A, dirty_vec, rcond=None)  # future behaviour
-    # presult = np.linalg.lstsq(A, dirty_vec, rcond=-1)  # old behaviour
+    diff_map = map1 - map2
 
-    pvec_final = presult[0]
+    pvec_final, correction_map, fit_map = solve_bw(
+        bw_mat, bw_mat_recon, diff_map
+        )
 
-    num_rows = zi1d.size
-    # correction_map = (
-    #     np.dot(rA[:num_rows], pvec_final) /
-    #     np.sum(np.abs(rA[:num_rows, ::poly_order]), axis=1)
-    #     ).reshape(zi1d.shape)
-    correction_map = np.dot(rA[:num_rows], pvec_final).reshape(zi1d.shape)
-    # sanity check:
-    # correction_map = np.dot(rA[:num_rows], pvec_input).reshape(zi1d.shape)
-
-    fit_map = np.dot(A[:num_rows], pvec_final).reshape(zi1d.shape)
-    diff_map = zi1d - zi2d
-    dirty_map = (zi1d * wi1d + zi2d * wi2d) / (wi1d + wi2d)
+    dirty_map = (map1 * wmap1 + map2 * wmap2) / (wmap1 + wmap2)
     cleaned_map = dirty_map - correction_map
     residual_map = cleaned_map - clean_map
 
