@@ -13,7 +13,7 @@ def compute_bw_arrays(
         lons2, lats2, tvecs2, data2,
         map_header,
         kernel_params,
-        poly_order=1,
+        poly_order=(1, 1),
         ):
     '''
     Compute all basket-weaving helper arrays
@@ -23,6 +23,7 @@ def compute_bw_arrays(
 
     '''
 
+    porder1, porder2 = poly_order
     num_scans1 = len(lons1)
     num_scans2 = len(lons2)
     # TODO: add checks (i.e., all arrays have compatible dimension)
@@ -50,26 +51,26 @@ def compute_bw_arrays(
     wi1d = gridders[0].get_weights().squeeze()
     wi2d = gridders[1].get_weights().squeeze()
 
-    bw_maps1 = np.empty((poly_order * num_scans1, ) + zi1d.shape)
-    bw_maps2 = np.empty((poly_order * num_scans2, ) + zi1d.shape)
+    bw_maps1 = np.empty((porder1 * num_scans1, ) + zi1d.shape)
+    bw_maps2 = np.empty((porder2 * num_scans2, ) + zi1d.shape)
 
     for idx, (lons, lats, tvecs) in enumerate(zip(lons1, lats1, tvecs1)):
-        for p in range(poly_order):
+        for p in range(porder1):
 
             gridders[2].clear_data_and_weights()
             gridders[2].grid(lons, lats, tvecs[p, :, np.newaxis])
 
             bw_map = gridders[2].get_unweighted_datacube().squeeze()
-            bw_maps1[idx * poly_order + p] = bw_map
+            bw_maps1[idx * porder1 + p] = bw_map
 
     for idx, (lons, lats, tvecs) in enumerate(zip(lons2, lats2, tvecs2)):
-        for p in range(poly_order):
+        for p in range(porder2):
 
             gridders[2].clear_data_and_weights()
             gridders[2].grid(lons, lats, tvecs[p, :, np.newaxis])
 
             bw_map = gridders[2].get_unweighted_datacube().squeeze()
-            bw_maps2[idx * poly_order + p] = bw_map
+            bw_maps2[idx * porder2 + p] = bw_map
 
     # need to divide the bw channel maps by the overall weighting
     bw_maps1 /= wi1d[np.newaxis]
@@ -81,13 +82,14 @@ def compute_bw_arrays(
 def compute_bw_matrices_and_vectors(
         zi1d, wi1d, bw_maps1,
         zi2d, wi2d, bw_maps2,
-        poly_order=1,
+        poly_order=(1, 1),
         dampening=0.1,
         ):
     '''
     Produce both, reconstruction and solving matrix
     '''
 
+    porder1, porder2 = poly_order
     zid = zi1d - zi2d
     num_params1 = bw_maps1.shape[0]
     num_params2 = bw_maps2.shape[0]
@@ -130,7 +132,7 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from helper import create_mock_data
 
-    poly_order = 1
+    poly_order = (1, 1)
     beam_fwhm = 10 / 60
     kernel_sigma = beam_fwhm / 2 / np.sqrt(8 * np.log(2))
     kernel_params = (

@@ -20,7 +20,7 @@ def create_mock_data(
         samples_per_scan2=None,
         map_rms=1,
         offset_rms=1,
-        poly_order=1,
+        poly_order=(1, 1),
         # baseline_coeffs=((0, ), (0, )),
         rng_seed=0,
         ):
@@ -29,6 +29,7 @@ def create_mock_data(
     '''
 
     lon_size, lat_size = map_size
+    porder1, porder2 = poly_order
 
     if grid_kernel_fwhm is None:
         grid_kernel_fwhm = beam_fwhm / 2
@@ -110,7 +111,7 @@ def create_mock_data(
     # TODO: allow to add a (different) baseline to both data sets
     # (which would mimic different ground contributions etc.)
 
-    def generate_data(lons, lats, num_scans):
+    def generate_data(lons, lats, num_scans, porder):
 
         def gauss2d(l, b, A, l0, b0, s):
             return (
@@ -136,7 +137,7 @@ def create_mock_data(
 
 
         # prepare scan-line offset coefficients
-        coeffs = np.random.normal(0, offset_rms, (num_scans, poly_order))
+        coeffs = np.random.normal(0, offset_rms, (num_scans, porder))
 
         for _lons, _lats, _coeffs in zip(lons, lats, coeffs):
 
@@ -181,8 +182,8 @@ def create_mock_data(
         return mockdata
 
     with NumpyRNGContext(rng_seed):
-        mockdata1 = generate_data(lons1, lats1, num_scans1)
-        mockdata2 = generate_data(lons2, lats2, num_scans2)
+        mockdata1 = generate_data(lons1, lats1, num_scans1, porder1)
+        mockdata2 = generate_data(lons2, lats2, num_scans2, porder2)
 
     return map_header, mockdata1, mockdata2
 
@@ -203,7 +204,7 @@ if __name__ == '__main__':
         samples_per_scan2=None,
         map_rms=1,
         offset_rms=1,
-        poly_order=2,
+        poly_order=(1, 1),
         # baseline_coeffs=((0, ), (0, )),
         rng_seed=0,
         )
