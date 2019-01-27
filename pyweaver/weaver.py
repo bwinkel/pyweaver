@@ -63,10 +63,18 @@ def compute_maps(
         gridder.set_kernel(*kernel_params)
 
     for lons, lats, data in zip(lons1, lats1, data1):
-        gridders[0].grid(lons, lats, data[:, np.newaxis])
+        gridders[0].grid(
+            np.ascontiguousarray(lons, dtype=np.float64),
+            np.ascontiguousarray(lats, dtype=np.float64),
+            np.ascontiguousarray(data, dtype=np.float64)[:, np.newaxis]
+            )
 
     for lons, lats, data in zip(lons2, lats2, data2):
-        gridders[1].grid(lons, lats, data[:, np.newaxis])
+        gridders[1].grid(
+            np.ascontiguousarray(lons, dtype=np.float64),
+            np.ascontiguousarray(lats, dtype=np.float64),
+            np.ascontiguousarray(data, dtype=np.float64)[:, np.newaxis]
+            )
 
     map1 = gridders[0].get_datacube().squeeze()
     map2 = gridders[1].get_datacube().squeeze()
@@ -80,7 +88,11 @@ def compute_maps(
         for p in range(porder1):
 
             gridders[2].clear_data_and_weights()
-            gridders[2].grid(lons, lats, pbs[p, :, np.newaxis])
+            gridders[2].grid(
+                np.ascontiguousarray(lons, dtype=np.float64),
+                np.ascontiguousarray(lats, dtype=np.float64),
+                np.ascontiguousarray(pbs, dtype=np.float64)[p, :, np.newaxis]
+                )
 
             bw_map = gridders[2].get_unweighted_datacube().squeeze()
             bw_maps1[idx * porder1 + p] = bw_map
@@ -89,7 +101,11 @@ def compute_maps(
         for p in range(porder2):
 
             gridders[2].clear_data_and_weights()
-            gridders[2].grid(lons, lats, pbs[p, :, np.newaxis])
+            gridders[2].grid(
+                np.ascontiguousarray(lons, dtype=np.float64),
+                np.ascontiguousarray(lats, dtype=np.float64),
+                np.ascontiguousarray(pbs, dtype=np.float64)[p, :, np.newaxis]
+                )
 
             bw_map = gridders[2].get_unweighted_datacube().squeeze()
             bw_maps2[idx * porder2 + p] = bw_map
