@@ -5,20 +5,37 @@ import numpy as np
 from cygrid import WcsGrid
 
 
-__all__ = ['compute_bw_arrays', ]
+__all__ = ['compute_bw_arrays', 'compute_bw_matrices_and_vectors']
+
+
+def _create_polybasis(list_of_arrays, porder):
+
+    polybasis = []
+    for arr in list_of_arrays:
+        tvec = np.linspace(-1, 1, len(arr))
+        polybasis.append(np.array([
+            np.power(tvec, p)
+            for p in range(porder)
+            ]))
+
+    return polybasis
 
 
 def compute_bw_arrays(
-        lons1, lats1, tvecs1, data1,
-        lons2, lats2, tvecs2, data2,
+        lons1, lats1, data1,
+        lons2, lats2, data2,
         map_header,
         kernel_params,
         poly_order=(1, 1),
+        polybasis1=None, polybasis2=None,
         ):
     '''
     Compute all basket-weaving helper arrays
 
     (lon/lat-dir and diff images, scan-line maps, BW matrix)
+
+    if polybases are None, create them here (using standard polynomial basis)
+
     TODO
 
     '''
@@ -27,6 +44,11 @@ def compute_bw_arrays(
     num_scans1 = len(lons1)
     num_scans2 = len(lons2)
     # TODO: add checks (i.e., all arrays have compatible dimension)
+
+    if polybasis1 is None:
+        polybasis1 = _create_polybasis(lons1, porder1)
+    if polybasis2 is None:
+        polybasis2 = _create_polybasis(lons2, porder2)
 
     # will grid each scan line separately (which is slower, but needs less
     # memory); may want to change this in the future!
@@ -54,20 +76,20 @@ def compute_bw_arrays(
     bw_maps1 = np.empty((porder1 * num_scans1, ) + zi1d.shape)
     bw_maps2 = np.empty((porder2 * num_scans2, ) + zi1d.shape)
 
-    for idx, (lons, lats, tvecs) in enumerate(zip(lons1, lats1, tvecs1)):
+    for idx, (lons, lats, pbs) in enumerate(zip(lons1, lats1, polybasis1)):
         for p in range(porder1):
 
             gridders[2].clear_data_and_weights()
-            gridders[2].grid(lons, lats, tvecs[p, :, np.newaxis])
+            gridders[2].grid(lons, lats, pbs[p, :, np.newaxis])
 
             bw_map = gridders[2].get_unweighted_datacube().squeeze()
             bw_maps1[idx * porder1 + p] = bw_map
 
-    for idx, (lons, lats, tvecs) in enumerate(zip(lons2, lats2, tvecs2)):
+    for idx, (lons, lats, pbs) in enumerate(zip(lons2, lats2, polybasis2)):
         for p in range(porder2):
 
             gridders[2].clear_data_and_weights()
-            gridders[2].grid(lons, lats, tvecs[p, :, np.newaxis])
+            gridders[2].grid(lons, lats, pbs[p, :, np.newaxis])
 
             bw_map = gridders[2].get_unweighted_datacube().squeeze()
             bw_maps2[idx * porder2 + p] = bw_map
@@ -152,8 +174,8 @@ if __name__ == '__main__':
         ])
 
     zi1d, wi1d, bw_maps1, zi2d, wi2d, bw_maps2 = compute_bw_arrays(
-        m1.lons, m1.lats, m1.tvecs, m1.dirty,
-        m2.lons, m2.lats, m2.tvecs, m2.dirty,
+        m1.lons, m1.lats, m1.dirty,
+        m2.lons, m2.lats, m2.dirty,
         map_header,
         kernel_params,
         poly_order=poly_order,

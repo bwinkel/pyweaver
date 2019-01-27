@@ -128,7 +128,7 @@ def create_mock_data(
 
         mock_members = [
             'lons', 'lats', 'coeffs',
-            'tvecs', 'offsets', 'model', 'noise',
+            'polybasis', 'offsets', 'model', 'noise',
             # 'baseline',
             'clean', 'dirty'
             ]
@@ -145,11 +145,11 @@ def create_mock_data(
             # (1) noise
             _noise = np.random.normal(0, map_rms, _len)
 
-            # (2) polynomial offsets (per scan line); also store tvecs
-            #     (the tvecs define the polynomial basis)
+            # (2) polynomial offsets (per scan line); also store polybasis
+            #     (the polybasis define the polynomial basis)
             _tvec = np.linspace(-1, 1, _len)
             # TODO: allow other types of polynomials?
-            _tvecs = np.array([
+            _polybasis = np.array([
                 np.power(_tvec, p)
                 for p in range(len(_coeffs))
                 ])
@@ -172,7 +172,7 @@ def create_mock_data(
             mockdata.lons.append(_lons)
             mockdata.lats.append(_lats)
             mockdata.coeffs.append(_coeffs)
-            mockdata.tvecs.append(_tvecs)
+            mockdata.polybasis.append(_polybasis)
             mockdata.offsets.append(_offsets)
             mockdata.model.append(_model)
             mockdata.noise.append(_noise)
